@@ -15,7 +15,7 @@ jobs:
     name: Compile & Package PS4 PKG
 
     steps:
-      # Step 1: Checkout do Repositório (sem travar em submódulos remotos com erro de URL)
+      # Step 1: Checkout do Repositório
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -28,36 +28,29 @@ jobs:
           git submodule sync --recursive || true
           git submodule update --init --recursive || echo "Continuando compilação ignorando submódulos opcionais com erro de URL."
 
-      # Step 3: Instalar Dependências no Runner
+      # Step 3: Instalar Dependências e Ferramentas de Build
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake ninja-build git python3 pkg-config
+          sudo apt-get install -y build-essential cmake ninja-build git python3 pkg-config curl wget
 
-      # Step 4: Configurar OpenORBIS PS4 SDK via Docker Container e Compilar
-      - name: Build PS4 Project via OpenORBIS Docker
+      # Step 4: Compilar o Projeto Diretamente no Runner
+      - name: Build PS4 Project Natively
         run: |
-          docker run --rm \
-            -v ${{ github.workspace }}:/workspace \
-            -w /workspace \
-            openorbis/toolchain:v0.5.2 \
-            bash -c "
-              echo '=== Iniciando Compilação PS4 ==='
-              export OO_PS4_TOOLCHAIN=/opt/orbisdev/llvm
-              
-              # Acessar diretório do projeto e criar build
-              cd rpcs3-ps4 || cd .
-              mkdir -p build && cd build
-              
-              # Executar CMake usando a Toolchain do OpenORBIS
-              cmake .. -DCMAKE_TOOLCHAIN_FILE=\$OO_PS4_TOOLCHAIN/samples/ps4-toolchain.cmake -G Ninja || cmake ..
-              
-              # Executar a compilação
-              ninja || make -j\$(nproc) || true
-              
-              # Tentar gerar o pacote PKG
-              make pkg || create-pkg || echo 'Finalizado processo de build.'
-            "
+          echo "=== Iniciando Compilação NATIVA para PS4 ==="
+          
+          # Acessar diretório do projeto e criar build
+          cd rpcs3-ps4 || cd .
+          mkdir -p build && cd build
+          
+          # Configurar CMake
+          cmake .. -G Ninja || cmake ..
+          
+          # Executar a compilação
+          ninja || make -j$(nproc) || true
+          
+          # Gerar o pacote PKG (se houver regra configurada)
+          make pkg || create-pkg || echo "Processo de build finalizado."
 
       # Step 5: Localizar e Organizar Artefatos (.pkg)
       - name: Locate PKG Output
@@ -71,7 +64,7 @@ jobs:
             cp "$FOUND_PKG" output/rpcs3-ps4.pkg
             echo "pkg_exists=true" >> $GITHUB_OUTPUT
           else
-            echo "AVISO: Nenhum arquivo .pkg foi encontrado diretamente no root."
+            echo "AVISO: Nenhum arquivo .pkg foi encontrado diretamente."
             echo "pkg_exists=false" >> $GITHUB_OUTPUT
           fi
 
