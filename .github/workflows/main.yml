@@ -15,21 +15,17 @@ jobs:
     name: Compile & Package PS4 PKG
 
     steps:
-      # Passo 1: Checkout com submódulos recursivos para puxar hidapi, cubeb e afins
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: false
           fetch-depth: 0
 
-         name: Init Submodules Safely
+      - name: Init Submodules Safely
         run: |
           git submodule sync --recursive || true
-          git submodule update --init --recursive || echo "Ignorando submódulos opcionais com erro de URL."
+          git submodule update --init --recursive || echo "Continuando compilação ignorando submódulos opcionais."
 
-    
-
-      # Passo 2: Instalar Dependências, GCC 13 e Bibliotecas de Sistema (Vulkan, Áudio, USB)
       - name: Install Build Dependencies & Vulkan
         run: |
           sudo apt-get update
@@ -38,10 +34,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential gcc-13 g++-13 cmake ninja-build git python3 pkg-config libgl1-mesa-dev libegl1-mesa-dev libgles2-mesa-dev libusb-1.0-0-dev libvulkan-dev vulkan-tools libasound2-dev libpulse-dev libudev-dev libevdev-dev
           
-          # Forçar o uso do GCC 13 e G++ 13
           sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-13 100 --slave /usr/bin/g++ g++ /usr/bin/g++-13
 
-      # Passo 3: Compilar e Instalar o SDL3 do código-fonte (necessário para o RPCS3 moderno)
       - name: Build and Install SDL3
         run: |
           git clone https://github.com/libsdl-org/SDL.git -b main --depth 1 sdl3
@@ -52,23 +46,18 @@ jobs:
           cd ../..
           rm -rf sdl3
 
-      # Passo 4: Executar o CMake e a Compilação do Projeto
       - name: Build PS4 Project
         run: |
           echo "=== Iniciando Compilação para PS4 ==="
           cd rpcs3-ps4 || cd .
           mkdir -p build && cd build
           
-          # Executar CMake configurando para Release
           cmake .. -DCMAKE_BUILD_TYPE=Release -G Ninja
           
-          # Executar a compilação com Ninja
           ninja || make -j$(nproc)
           
-          # Gerar o pacote PKG
           make pkg || create-pkg || echo "Processo de build finalizado."
 
-      # Passo 5: Localizar e Organizar Artefatos (.pkg)
       - name: Locate PKG Output
         id: find_pkg
         run: |
@@ -84,7 +73,6 @@ jobs:
             echo "pkg_exists=false" >> $GITHUB_OUTPUT
           fi
 
-      # Passo 6: Upload do PKG como Artefato de Build no GitHub
       - name: Upload PKG Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -92,7 +80,6 @@ jobs:
           path: output/*.pkg
           retention-days: 14
 
-      # Passo 7: Publicar em Releases se for uma Tag (ex: v1.0.0)
       - name: Create Release and Upload PKG
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
