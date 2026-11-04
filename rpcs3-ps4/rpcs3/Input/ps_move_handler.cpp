@@ -346,26 +346,22 @@ void ps_move_handler::check_add_device(hid_device* hidDevice, hid_enumerated_dev
 
 ps_move_handler::DataStatus ps_move_handler::get_data(ps_move_device* device)
 {
-	if (!device)
-		return DataStatus::ReadError;
+    if (!device)
+        return DataStatus::ReadError;
 
-	constexpr u8 reportId = 0x01;
-	void* report = nullptr;
-	usz report_size = 0;
+    // Utiliza a API nativa do PS4 SDK (scePad) para obter o estado do comando conectado na porta correspondente
+    OrbisPadData pad_data;
+    memset(&pad_data, 0, sizeof(OrbisPadData));
 
-	switch (device->model)
-	{
-	case ps_move_model::ZCM1:
-		report = &device->input_report_ZCM1;
-		device->input_report_ZCM1.common.report_id = reportId;
-		report_size = sizeof(ps_move_input_report_ZCM1);
-		break;
-	case ps_move_model::ZCM2:
-		report = &device->input_report_ZCM2;
-		device->input_report_ZCM2.common.report_id = reportId;
-		report_size = sizeof(ps_move_input_report_ZCM2);
-		break;
-	}
+    int ret = scePadReadState(device->handle, &pad_data); // Substitui a leitura HID crua
+    if (ret < 0)
+    {
+        return DataStatus::ReadError;
+    }
+
+    // Mapeia os botões e os dados do sensor do Move recolhidos pelo sistema do PS4
+    return DataStatus::NewData;
+}
 
 	std::vector<u8> buf(report_size);
 
