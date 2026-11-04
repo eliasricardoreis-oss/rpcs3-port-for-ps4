@@ -16,11 +16,12 @@ jobs:
 
     steps:
       # Step 1: Checkout do Repositório (com submódulos)
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          fetch-depth: 0
+      - - name: Checkout repository
+          uses: actions/checkout@v4
+          with:
+           submodules: recursive
+           fetch-depth: 0
+           token: ${{ secrets.GITHUB_TOKEN }}
 
       # Step 2: Instalar Dependências no Runner
       - name: Install Build Dependencies
