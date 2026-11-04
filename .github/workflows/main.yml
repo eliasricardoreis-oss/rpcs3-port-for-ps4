@@ -19,8 +19,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: false
           fetch-depth: 0
+
+         name: Init Submodules Safely
+        run: |
+          git submodule sync --recursive || true
+          git submodule update --init --recursive || echo "Ignorando submódulos opcionais com erro de URL."
+
+    
 
       # Passo 2: Instalar Dependências, GCC 13 e Bibliotecas de Sistema (Vulkan, Áudio, USB)
       - name: Install Build Dependencies & Vulkan
