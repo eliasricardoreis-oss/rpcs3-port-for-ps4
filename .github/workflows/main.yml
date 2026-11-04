@@ -15,59 +15,53 @@ jobs:
     name: Compile & Package PS4 PKG
 
     steps:
-      # Step 1: Checkout do Repositório
+      # Passo 1: Checkout com submódulos recursivos para puxar hidapi, cubeb e afins
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          submodules: false
+          submodules: recursive
           fetch-depth: 0
 
-      # Step 2: Sincronização e atualização manual segura de submódulos
-      - name: Init Submodules Safely
-        run: |
-          git submodule sync --recursive || true
-          git submodule update --init --recursive || echo "Continuando compilação ignorando submódulos opcionais com erro de URL."
-
-# Step 3: Instalar Dependências, GCC 13 e Pacotes Gráficos no Runner
-      - name: Install Build Dependencies & Graphics Libs
+      # Passo 2: Instalar Dependências, GCC 13 e Bibliotecas de Sistema (Vulkan, Áudio, USB)
+      - name: Install Build Dependencies & Vulkan
         run: |
           sudo apt-get update
           sudo apt-get install -y software-properties-common curl wget
           sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
           sudo apt-get update
-          sudo apt-get install -y build-essential gcc-13 g++-13 cmake ninja-build git python3 pkg-config libgl1-mesa-dev libegl1-mesa-dev libgles2-mesa-dev libusb-1.0-0-dev
+          sudo apt-get install -y build-essential gcc-13 g++-13 cmake ninja-build git python3 pkg-config libgl1-mesa-dev libegl1-mesa-dev libgles2-mesa-dev libusb-1.0-0-dev libvulkan-dev vulkan-tools libasound2-dev libpulse-dev libudev-dev libevdev-dev
           
           # Forçar o uso do GCC 13 e G++ 13
           sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-13 100 --slave /usr/bin/g++ g++ /usr/bin/g++-13
 
-      # Step 3.1: Inicializar corretamente os submódulos que faltavam (como o hidapi)
-      - name: Fix and Init Submodules
+      # Passo 3: Compilar e Instalar o SDL3 do código-fonte (necessário para o RPCS3 moderno)
+      - name: Build and Install SDL3
         run: |
-          git submodule sync --recursive || true
-          git submodule update --init --recursive --force || true
-          # Caso o hidapi seja um submódulo ausente ou precise ser clonado manualmente:
-          if [ ! -d "rpcs3-ps4/3rdparty/hidapi" ]; then
-            git clone https://github.com/libusb/hidapi.git rpcs3-ps4/3rdparty/hidapi || true
-          fi
-      # Step 4: Compilar o Projeto Diretamente no Runner
-      - name: Build PS4 Project Natively
+          git clone https://github.com/libsdl-org/SDL.git -b main --depth 1 sdl3
+          cd sdl3
+          mkdir build && cd build
+          cmake .. -DCMAKE_BUILD_TYPE=Release -DSDL_TEST=OFF -G Ninja
+          sudo ninja install
+          cd ../..
+          rm -rf sdl3
+
+      # Passo 4: Executar o CMake e a Compilação do Projeto
+      - name: Build PS4 Project
         run: |
-          echo "=== Iniciando Compilação NATIVA para PS4 ==="
-          
-          # Acessar diretório do projeto e criar build
+          echo "=== Iniciando Compilação para PS4 ==="
           cd rpcs3-ps4 || cd .
           mkdir -p build && cd build
           
-          # Configurar CMake
-          cmake .. -G Ninja || cmake ..
+          # Executar CMake configurando para Release
+          cmake .. -DCMAKE_BUILD_TYPE=Release -G Ninja
           
-          # Executar a compilação
-          ninja || make -j$(nproc) || true
+          # Executar a compilação com Ninja
+          ninja || make -j$(nproc)
           
-          # Gerar o pacote PKG (se houver regra configurada)
+          # Gerar o pacote PKG
           make pkg || create-pkg || echo "Processo de build finalizado."
 
-      # Step 5: Localizar e Organizar Artefatos (.pkg)
+      # Passo 5: Localizar e Organizar Artefatos (.pkg)
       - name: Locate PKG Output
         id: find_pkg
         run: |
@@ -83,7 +77,7 @@ jobs:
             echo "pkg_exists=false" >> $GITHUB_OUTPUT
           fi
 
-      # Step 6: Upload do PKG como Artefato de Build no GitHub
+      # Passo 6: Upload do PKG como Artefato de Build no GitHub
       - name: Upload PKG Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -91,7 +85,7 @@ jobs:
           path: output/*.pkg
           retention-days: 14
 
-      # Step 7: Publicar em Releases se for uma Tag (ex: v1.0.0)
+      # Passo 7: Publicar em Releases se for uma Tag (ex: v1.0.0)
       - name: Create Release and Upload PKG
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
