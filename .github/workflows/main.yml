@@ -28,11 +28,18 @@ jobs:
           git submodule sync --recursive || true
           git submodule update --init --recursive || echo "Continuando compilação ignorando submódulos opcionais com erro de URL."
 
-      # Step 3: Instalar Dependências e Ferramentas de Build
-      - name: Install Build Dependencies
+# Step 3: Instalar Dependências e GCC 13 no Runner
+      - name: Install Build Dependencies & GCC 13
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake ninja-build git python3 pkg-config curl wget
+          sudo apt-get install -y software-properties-common curl wget
+          sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
+          sudo apt-get update
+          sudo apt-get install -y build-essential gcc-13 g++-13 cmake ninja-build git python3 pkg-config
+          
+          # Forçar o uso do GCC 13 e G++ 13
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-13 100 --slave /usr/bin/g++ g++ /usr/bin/g++-13
+          gcc --version
 
       # Step 4: Compilar o Projeto Diretamente no Runner
       - name: Build PS4 Project Natively
