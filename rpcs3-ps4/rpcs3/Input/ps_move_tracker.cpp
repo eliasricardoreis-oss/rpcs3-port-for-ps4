@@ -190,6 +190,9 @@ void ps_move_tracker<DiagnosticsEnabled>::join_worker(u32 index)
 template <bool DiagnosticsEnabled>
 void ps_move_tracker<DiagnosticsEnabled>::process_image()
 {
+	convert_image(CELL_GEM_RGBA_640x480);
+    process_hues();
+	
 	// Convert image to RGBA
 	convert_image(CELL_GEM_RGBA_640x480);
 
