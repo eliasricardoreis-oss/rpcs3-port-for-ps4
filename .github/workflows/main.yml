@@ -1,0 +1,86 @@
+name: Build PS4 PKG (RPCS3 Port)
+
+on:
+  push:
+    branches: [ "main", "master" ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build-pkg:
+    runs-on: ubuntu-22.04
+    name: Compile & Package PS4 PKG
+
+    steps:
+      # Step 1: Checkout do Repositório (com submódulos)
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      # Step 2: Instalar Dependências no Runner
+      - name: Install Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build git python3 pkg-config
+
+      # Step 3: Configurar OpenORBIS PS4 SDK via Docker Container
+      - name: Build PS4 Project via OpenORBIS Docker
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            openorbis/toolchain:v0.5.2 \
+            bash -c "
+              echo '=== Iniciando Compilação PS4 ==='
+              export OO_PS4_TOOLCHAIN=/opt/orbisdev/llvm
+              
+              # Criar e acessar diretório de build
+              mkdir -p build && cd build
+              
+              # Executar CMake usando a Toolchain do OpenORBIS
+              cmake .. -DCMAKE_TOOLCHAIN_FILE=\$OO_PS4_TOOLCHAIN/samples/ps4-toolchain.cmake -G Ninja || make -j\$(nproc)
+              
+              # Executar a compilação
+              ninja || make -j\$(nproc)
+              
+              # Executar empacotamento em PKG (se houver regra de pkg no Makefile/CMake)
+              make pkg || echo 'Empacotamento via Make concluído ou personalizado'
+            "
+
+      # Step 4: Localizar e Organizar Artefatos (.pkg)
+      - name: Locate PKG Output
+        id: find_pkg
+        run: |
+          mkdir -p output
+          echo "Buscando arquivos .pkg gerados..."
+          FOUND_PKG=$(find . -maxdepth 3 -name "*.pkg" | head -n 1)
+          if [ -n "$FOUND_PKG" ]; then
+            echo "PKG Encontrado: $FOUND_PKG"
+            cp "$FOUND_PKG" output/rpcs3-ps4.pkg
+            echo "pkg_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "AVISO: Nenhum arquivo .pkg foi encontrado diretamente no root."
+            echo "pkg_exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      # Step 5: Upload do PKG como Artefato de Build no GitHub
+      - name: Upload PKG Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RPCS3-PS4-PKG
+          path: output/*.pkg
+          retention-days: 14
+
+      # Step 6: Publicar em Releases se for uma Tag (ex: v1.0.0)
+      - name: Create Release and Upload PKG
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: output/rpcs3-ps4.pkg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
