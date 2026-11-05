@@ -38,17 +38,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build python3 git curl wget build-essential pkg-config unzip
 
-      # Baixar e configurar o OpenOrbis e o llvm-mingw (Componentes obrigatórios do BUILDING.md)
+      # Removido o --depth 1 para permitir o clone recursivo completo dos submódulos do OpenOrbis sem erros
       - name: Setup PS4 Toolchain & llvm-mingw Dependencies
         run: |
           mkdir -p ps4-toolchain-deps
           cd ps4-toolchain-deps
           
-          # 1. Clonar OpenOrbis Toolchain com recursividade total
-          git clone --recursive --depth 1 https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain.git OpenOrbis-PS4-Toolchain
+          git clone --recursive https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain.git OpenOrbis-PS4-Toolchain
           echo "SDK_PATH=$PWD/OpenOrbis-PS4-Toolchain" >> $GITHUB_ENV
 
-          # 2. Baixar llvm-mingw (versão 20240619 UCRT x86_64 conforme especificação)
           wget -q https://github.com/mstorsjo/llvm-mingw/releases/download/20240619/llvm-mingw-20240619-ucrt-x86_64.tar.xz
           tar -xf llvm-mingw-20240619-ucrt-x86_64.tar.xz
           echo "LLVM_BIN=$PWD/llvm-mingw-20240619-ucrt-x86_64/bin" >> $GITHUB_ENV
@@ -69,7 +67,6 @@ jobs:
           cd rpcs3-ps4
           mkdir -p ps4-port/.build-abi
           
-          # Configuração correta passando o SDK, o compilador llvm-mingw e o Ninja explicitamente
           cmake -S . -B ps4-port/.build-abi -G Ninja \
             -DCMAKE_MAKE_PROGRAM=/usr/bin/ninja \
             -DRPCS3_PS4_PORT=ON \
