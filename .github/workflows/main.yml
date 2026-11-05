@@ -38,13 +38,21 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build python3 git curl wget build-essential pkg-config unzip
 
-      # Clona o OpenOrbis Toolchain recursivamente para garantir que todos os submódulos internos do SDK venham juntos
-      - name: Clone OpenOrbis Toolchain with Submodules
+      # Baixar e configurar o OpenOrbis e o llvm-mingw (Componentes obrigatórios do BUILDING.md)
+      - name: Setup PS4 Toolchain & llvm-mingw Dependencies
         run: |
           mkdir -p ps4-toolchain-deps
           cd ps4-toolchain-deps
-          git clone --recursive --depth 1 https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain.git
+          
+          # 1. Clonar OpenOrbis Toolchain com recursividade total
+          git clone --recursive --depth 1 https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain.git OpenOrbis-PS4-Toolchain
           echo "SDK_PATH=$PWD/OpenOrbis-PS4-Toolchain" >> $GITHUB_ENV
+
+          # 2. Baixar llvm-mingw (versão 20240619 UCRT x86_64 conforme especificação)
+          wget -q https://github.com/mstorsjo/llvm-mingw/releases/download/20240619/llvm-mingw-20240619-ucrt-x86_64.tar.xz
+          tar -xf llvm-mingw-20240619-ucrt-x86_64.tar.xz
+          echo "LLVM_BIN=$PWD/llvm-mingw-20240619-ucrt-x86_64/bin" >> $GITHUB_ENV
+          
           cd ..
 
       - name: Prepare Pinned Dependencies
@@ -61,11 +69,15 @@ jobs:
           cd rpcs3-ps4
           mkdir -p ps4-port/.build-abi
           
+          # Configuração correta passando o SDK, o compilador llvm-mingw e o Ninja explicitamente
           cmake -S . -B ps4-port/.build-abi -G Ninja \
             -DCMAKE_MAKE_PROGRAM=/usr/bin/ninja \
             -DRPCS3_PS4_PORT=ON \
             -DCMAKE_TOOLCHAIN_FILE=ps4-port/toolchain.cmake \
             -DRPCS3_PS4_SDK="${{ env.SDK_PATH }}" \
+            -DRPCS3_PS4_LLVM_BIN="${{ env.LLVM_BIN }}" \
+            -DCMAKE_C_COMPILER="${{ env.LLVM_BIN }}/clang" \
+            -DCMAKE_CXX_COMPILER="${{ env.LLVM_BIN }}/clang++" \
             -DCMAKE_BUILD_TYPE=Release
 
           cmake --build ps4-port/.build-abi --target rpcs3_ps4_elf -j $(nproc)
