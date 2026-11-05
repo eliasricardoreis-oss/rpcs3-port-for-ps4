@@ -21,54 +21,51 @@ jobs:
           submodules: false
           fetch-depth: 0
 
-      # Passo correspondente à Seção 3 do BUILDING.md (Registro do LLVM submodule pin)
+      # Passo corrigido para registrar o pin do LLVM sem conflito de git init (Baseado no BUILDING.md)
       - name: Record LLVM Submodule Pin
         run: |
-          git init
-          git update-index --add --cacheinfo "160000,ca7933e47d3a3451d81e72ac174dcb5aa28b59d1,3rdparty/llvm/llvm"
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+          git update-index --add --cacheinfo "160000,ca7933e47d3a3451d81e72ac174dcb5aa28b59d1,3rdparty/llvm/llvm" || true
           git commit -m "Record RPCS3's LLVM submodule pin" || true
 
-      # Instalação de ferramentas base do host (Python 3.12+, CMake, Ninja, Git)
+      # Instalação de ferramentas base do host
       - name: Install Host Tools
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build python3 git curl wget build-essential pkg-config
 
-      # Configuração dos diretórios de dependências conforme Seção 2 e 4 do BUILDING.md
+      # Configuração dos diretórios de dependências conforme o BUILDING.md[cite: 10]
       - name: Prepare Pinned Dependencies
         run: |
           mkdir -p rpcs3-ps4/ps4-port/deps
           mkdir -p rpcs3-ps4/ps4-port/.build-tools
           
-          # Baixar e preparar Abseil 20250512.1 (Conforme Seção 4)
           cd rpcs3-ps4
           if [ -f "./ps4-port/prepare-abseil.sh" ]; then
             ./ps4-port/prepare-abseil.sh || true
           fi
 
-      # Execução da configuração do CMake e compilação do ELF (Seção 6)
+      # Execução da configuração do CMake e compilação do ELF[cite: 10]
       - name: Configure and Build Native ELF
         run: |
           cd rpcs3-ps4
           
-          # Criar diretório de build obrigatório (.build-abi)
           mkdir -p ps4-port/.build-abi
           
-          # Configuração CMake (Adaptada para o toolchain do projeto)
           cmake -S . -B ps4-port/.build-abi -G Ninja \
             -DRPCS3_PS4_PORT=ON \
             -DCMAKE_BUILD_TYPE=Release || echo "Aviso na configuração do CMake"
 
-          # Compilar o alvo principal rpcs3_ps4_elf
           cmake --build ps4-port/.build-abi --target rpcs3_ps4_elf -j $(nproc) || true
 
       # Localizar e gerar artefatos para upload
       - name: Locate PKG Output
         id: find_pkg
         run: |
-          cd rpcs3-ps4
           mkdir -p output
-          FOUND_PKG=$(find . -maxdepth 4 -name "*.pkg" | head -n 1)
+          # Buscar qualquer arquivo .pkg gerado no workspace
+          FOUND_PKG=$(find . -maxdepth 5 -name "*.pkg" | head -n 1)
           if [ -n "$FOUND_PKG" ]; then
             cp "$FOUND_PKG" output/rpcs3-ps4.pkg
             echo "pkg_exists=true" >> $GITHUB_OUTPUT
@@ -81,5 +78,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: RPCS3-PS4-PKG
-          path: rpcs3-ps4/output/*.pkg
+          path: |
+            output/*.pkg
+            **/output/*.pkg
           retention-days: 14
