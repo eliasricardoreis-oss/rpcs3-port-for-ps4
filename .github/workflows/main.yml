@@ -9,6 +9,9 @@ on:
     branches: [ "main", "master" ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-pkg:
     runs-on: ubuntu-22.04
@@ -35,13 +38,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build python3 git curl wget build-essential pkg-config unzip
 
-      - name: Download PS4 Toolchain & Dependencies
+      # Clona o repositório completo para garantir a estrutura correta exigida pelo toolchain.cmake
+      - name: Clone OpenOrbis Toolchain
         run: |
           mkdir -p ps4-toolchain-deps
           cd ps4-toolchain-deps
-          wget -q https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/archive/refs/tags/v0.5.4.zip
-          unzip -q v0.5.4.zip
-          mv OpenOrbis-PS4-Toolchain-0.5.4 OpenOrbis-PS4-Toolchain
+          git clone --depth 1 https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain.git
           echo "SDK_PATH=$PWD/OpenOrbis-PS4-Toolchain" >> $GITHUB_ENV
           cd ..
 
@@ -89,7 +91,7 @@ jobs:
           path: rpcs3-ps4/output/*.pkg
           retention-days: 14
 
-      # Publicar nas Releases do GitHub
+      # Publica o arquivo .pkg diretamente nas Releases do GitHub
       - name: Create Automatic Release on Success
         if: steps.find_pkg.outputs.pkg_exists == 'true' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
         uses: softprops/action-gh-release@v1
