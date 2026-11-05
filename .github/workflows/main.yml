@@ -26,7 +26,6 @@ jobs:
           git config --global --unset-all core.sshCommand || true
           git config user.name "GitHub Actions Bot"
           git config user.email "actions@github.com"
-          # Entrar na pasta do projeto se necessário para o git update-index
           cd rpcs3-ps4 || true
           git update-index --add --cacheinfo "160000,ca7933e47d3a3451d81e72ac174dcb5aa28b59d1,3rdparty/llvm/llvm" || true
           git commit -m "Record RPCS3's LLVM submodule pin" || true
@@ -46,7 +45,6 @@ jobs:
           echo "SDK_PATH=$PWD/OpenOrbis-PS4-Toolchain" >> $GITHUB_ENV
           cd ..
 
-      # Entrar na pasta correta rpcs3-ps4 onde está o CMakeLists.txt
       - name: Prepare Pinned Dependencies
         run: |
           cd rpcs3-ps4
@@ -63,6 +61,7 @@ jobs:
           
           cmake -S . -B ps4-port/.build-abi -G Ninja \
             -DRPCS3_PS4_PORT=ON \
+            -DCMAKE_TOOLCHAIN_FILE=ps4-port/toolchain.cmake \
             -DRPCS3_PS4_SDK="${{ env.SDK_PATH }}" \
             -DCMAKE_BUILD_TYPE=Release
 
@@ -89,3 +88,19 @@ jobs:
           name: RPCS3-PS4-PKG
           path: rpcs3-ps4/output/*.pkg
           retention-days: 14
+
+      # Publicar nas Releases do GitHub
+      - name: Create Automatic Release on Success
+        if: steps.find_pkg.outputs.pkg_exists == 'true' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
+        uses: softprops/action-gh-release@v1
+        with:
+          files: rpcs3-ps4/output/*.pkg
+          tag_name: build-${{ github.run_number }}
+          name: RPCS3 PS4 Build #${{ github.run_number }}
+          body: |
+            Build automático gerado com sucesso via GitHub Actions!
+            Commit: ${{ github.sha }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
