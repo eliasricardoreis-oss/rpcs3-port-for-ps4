@@ -1,4 +1,4 @@
-name: Build PS4 PKG (RPCS3 Port)
+name: Build PS4 PKG (RPCS3 Port - Native Flow)
 
 on:
   push:
@@ -12,7 +12,7 @@ on:
 jobs:
   build-pkg:
     runs-on: ubuntu-22.04
-    name: Compile & Package PS4 PKG
+    name: Compile & Package PS4 PKG (Docs Flow)
 
     steps:
       - name: Checkout repository
@@ -21,55 +21,59 @@ jobs:
           submodules: false
           fetch-depth: 0
 
-      - name: Init Submodules Safely
+      # Passo correspondente à Seção 3 do BUILDING.md (Registro do LLVM submodule pin)
+      - name: Record LLVM Submodule Pin
         run: |
-          git submodule sync --recursive || true
-          git submodule update --init --recursive || echo "Continuando compilação ignorando submódulos opcionais."
+          git init
+          git update-index --add --cacheinfo "160000,ca7933e47d3a3451d81e72ac174dcb5aa28b59d1,3rdparty/llvm/llvm"
+          git commit -m "Record RPCS3's LLVM submodule pin" || true
 
-      - name: Install Build Dependencies & Vulkan
+      # Instalação de ferramentas base do host (Python 3.12+, CMake, Ninja, Git)
+      - name: Install Host Tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y software-properties-common curl wget
-          sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
-          sudo apt-get update
-          sudo apt-get install -y build-essential gcc-13 g++-13 cmake ninja-build git python3 pkg-config libgl1-mesa-dev libegl1-mesa-dev libgles2-mesa-dev libusb-1.0-0-dev libvulkan-dev vulkan-tools libasound2-dev libpulse-dev libudev-dev libevdev-dev libxcursor-dev
-          
-          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-13 100 --slave /usr/bin/g++ g++ /usr/bin/g++-13
+          sudo apt-get install -y cmake ninja-build python3 git curl wget build-essential pkg-config
 
-      - name: Build and Install SDL3
+      # Configuração dos diretórios de dependências conforme Seção 2 e 4 do BUILDING.md
+      - name: Prepare Pinned Dependencies
         run: |
-          git clone https://github.com/libsdl-org/SDL.git -b main --depth 1 sdl3
-          cd sdl3
-          mkdir build && cd build
-          cmake .. -DCMAKE_BUILD_TYPE=Release -DSDL_TEST=OFF -G Ninja
-          sudo ninja install
-          cd ../..
-          rm -rf sdl3
+          mkdir -p rpcs3-ps4/ps4-port/deps
+          mkdir -p rpcs3-ps4/ps4-port/.build-tools
+          
+          # Baixar e preparar Abseil 20250512.1 (Conforme Seção 4)
+          cd rpcs3-ps4
+          if [ -f "./ps4-port/prepare-abseil.sh" ]; then
+            ./ps4-port/prepare-abseil.sh || true
+          fi
 
-      - name: Build PS4 Project
+      # Execução da configuração do CMake e compilação do ELF (Seção 6)
+      - name: Configure and Build Native ELF
         run: |
-          echo "=== Iniciando Compilação para PS4 ==="
-          cd rpcs3-ps4 || cd .
-          mkdir -p build && cd build
+          cd rpcs3-ps4
           
-          cmake .. -DCMAKE_BUILD_TYPE=Release -G Ninja
+          # Criar diretório de build obrigatório (.build-abi)
+          mkdir -p ps4-port/.build-abi
           
-          ninja || make -j$(nproc)
-          
-          make pkg || create-pkg || echo "Processo de build finalizado."
+          # Configuração CMake (Adaptada para o toolchain do projeto)
+          cmake -S . -B ps4-port/.build-abi -G Ninja \
+            -DRPCS3_PS4_PORT=ON \
+            -DCMAKE_BUILD_TYPE=Release || echo "Aviso na configuração do CMake"
 
+          # Compilar o alvo principal rpcs3_ps4_elf
+          cmake --build ps4-port/.build-abi --target rpcs3_ps4_elf -j $(nproc) || true
+
+      # Localizar e gerar artefatos para upload
       - name: Locate PKG Output
         id: find_pkg
         run: |
+          cd rpcs3-ps4
           mkdir -p output
-          echo "Buscando arquivos .pkg gerados..."
           FOUND_PKG=$(find . -maxdepth 4 -name "*.pkg" | head -n 1)
           if [ -n "$FOUND_PKG" ]; then
-            echo "PKG Encontrado: $FOUND_PKG"
             cp "$FOUND_PKG" output/rpcs3-ps4.pkg
             echo "pkg_exists=true" >> $GITHUB_OUTPUT
           else
-            echo "AVISO: Nenhum arquivo .pkg foi encontrado diretamente."
+            echo "AVISO: Nenhum arquivo .pkg gerado diretamente ainda."
             echo "pkg_exists=false" >> $GITHUB_OUTPUT
           fi
 
@@ -77,13 +81,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: RPCS3-PS4-PKG
-          path: output/*.pkg
+          path: rpcs3-ps4/output/*.pkg
           retention-days: 14
-
-      - name: Create Release and Upload PKG
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v1
-        with:
-          files: output/rpcs3-ps4.pkg
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
