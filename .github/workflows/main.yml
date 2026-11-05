@@ -38,14 +38,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build python3 git curl wget build-essential pkg-config unzip
 
-      # Passo blindado para extrair e estruturar corretamente o OpenOrbis SDK e o llvm-mingw
+      # Substituído wget por curl com User-Agent para evitar o exit code 8 do servidor do GitHub
       - name: Setup PS4 Toolchain & llvm-mingw Dependencies
         run: |
           mkdir -p ps4-toolchain-deps
           cd ps4-toolchain-deps
           
-          # 1. Configuração robusta do OpenOrbis SDK (evita falhas de submódulos do git clone)
-          wget -q https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/archive/refs/tags/v0.5.4.zip -O toolchain.zip
+          # 1. OpenOrbis SDK via curl
+          curl -sL -A "Mozilla/5.0" https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/archive/refs/tags/v0.5.4.zip -o toolchain.zip
           unzip -q toolchain.zip
           mv OpenOrbis-PS4-Toolchain-0.5.4 OpenOrbis-PS4-Toolchain
           
@@ -55,9 +55,9 @@ jobs:
           echo "SDK_PATH=$PWD" >> $GITHUB_ENV
           cd ../..
 
-          # 2. Descarregar e extrair o llvm-mingw oficial
-          wget -q https://github.com/mstorsjo/llvm-mingw/releases/download/20240619/llvm-mingw-20240619-ucrt-x86_64.tar.xz
-          tar -xf llvm-mingw-20240619-ucrt-x86_64.tar.xz
+          # 2. llvm-mingw via curl
+          curl -sL -A "Mozilla/5.0" https://github.com/mstorsjo/llvm-mingw/releases/download/20240619/llvm-mingw-20240619-ucrt-x86_64.tar.xz -o llvm-mingw.tar.xz
+          tar -xf llvm-mingw.tar.xz
           echo "LLVM_BIN=$PWD/llvm-mingw-20240619-ucrt-x86_64/bin" >> $GITHUB_ENV
 
       - name: Prepare Pinned Dependencies
@@ -74,7 +74,6 @@ jobs:
           cd rpcs3-ps4
           mkdir -p ps4-port/.build-abi
           
-          # Configuração do CMake com caminhos absolutos e toolchain fixados
           cmake -S . -B ps4-port/.build-abi -G Ninja \
             -DCMAKE_MAKE_PROGRAM=/usr/bin/ninja \
             -DRPCS3_PS4_PORT=ON \
@@ -109,7 +108,6 @@ jobs:
           path: rpcs3-ps4/output/*.pkg
           retention-days: 14
 
-      # Criação automática da Release e upload do .pkg quando o build for bem-sucedido
       - name: Create Automatic Release on Success
         if: steps.find_pkg.outputs.pkg_exists == 'true' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
         uses: softprops/action-gh-release@v1
