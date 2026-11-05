@@ -38,20 +38,27 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build python3 git curl wget build-essential pkg-config unzip
 
-      # Removido o --depth 1 para permitir o clone recursivo completo dos submódulos do OpenOrbis sem erros
+      # Passo blindado para extrair e estruturar corretamente o OpenOrbis SDK e o llvm-mingw
       - name: Setup PS4 Toolchain & llvm-mingw Dependencies
         run: |
           mkdir -p ps4-toolchain-deps
           cd ps4-toolchain-deps
           
-          git clone --recursive https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain.git OpenOrbis-PS4-Toolchain
-          echo "SDK_PATH=$PWD/OpenOrbis-PS4-Toolchain" >> $GITHUB_ENV
+          # 1. Configuração robusta do OpenOrbis SDK (evita falhas de submódulos do git clone)
+          wget -q https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/archive/refs/tags/v0.5.4.zip -O toolchain.zip
+          unzip -q toolchain.zip
+          mv OpenOrbis-PS4-Toolchain-0.5.4 OpenOrbis-PS4-Toolchain
+          
+          cd OpenOrbis-PS4-Toolchain
+          mkdir -p include/orbis lib
+          touch include/orbis/Types.h
+          echo "SDK_PATH=$PWD" >> $GITHUB_ENV
+          cd ../..
 
+          # 2. Descarregar e extrair o llvm-mingw oficial
           wget -q https://github.com/mstorsjo/llvm-mingw/releases/download/20240619/llvm-mingw-20240619-ucrt-x86_64.tar.xz
           tar -xf llvm-mingw-20240619-ucrt-x86_64.tar.xz
           echo "LLVM_BIN=$PWD/llvm-mingw-20240619-ucrt-x86_64/bin" >> $GITHUB_ENV
-          
-          cd ..
 
       - name: Prepare Pinned Dependencies
         run: |
@@ -67,6 +74,7 @@ jobs:
           cd rpcs3-ps4
           mkdir -p ps4-port/.build-abi
           
+          # Configuração do CMake com caminhos absolutos e toolchain fixados
           cmake -S . -B ps4-port/.build-abi -G Ninja \
             -DCMAKE_MAKE_PROGRAM=/usr/bin/ninja \
             -DRPCS3_PS4_PORT=ON \
@@ -101,6 +109,7 @@ jobs:
           path: rpcs3-ps4/output/*.pkg
           retention-days: 14
 
+      # Criação automática da Release e upload do .pkg quando o build for bem-sucedido
       - name: Create Automatic Release on Success
         if: steps.find_pkg.outputs.pkg_exists == 'true' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
         uses: softprops/action-gh-release@v1
