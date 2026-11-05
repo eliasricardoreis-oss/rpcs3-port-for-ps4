@@ -33,79 +33,43 @@ jobs:
           git update-index --add --cacheinfo "160000,ca7933e47d3a3451d81e72ac174dcb5aa28b59d1,3rdparty/llvm/llvm" || true
           git commit -m "Record RPCS3's LLVM submodule pin" || true
 
-      - name: Install Host Tools
+      - name: Install Host Tools & Native Clang/LLD
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build python3 git curl wget build-essential pkg-config unzip
+          sudo apt-get install -y cmake ninja-build python3 git curl wget build-essential pkg-config unzip clang lld
 
-      # Script Python inteligente com consulta à API do GitHub para buscar o llvm-mingw de forma 100% dinâmica
-      - name: Setup PS4 Toolchain & llvm-mingw Dependencies (Dynamic API Downloader)
+      # Descarrega apenas o OpenOrbis SDK via Python de forma robusta e aponta o LLVM para o sistema
+      - name: Setup OpenOrbis SDK & System LLVM
         run: |
           mkdir -p ps4-toolchain-deps
           cd ps4-toolchain-deps
           python3 -c '
           import urllib.request
-          import json
           import zipfile
-          import tarfile
           import os
 
-          def download_file(url, dest):
-              print(f"A descarregar {url}...")
-              headers = {"User-Agent": "Mozilla/5.0"}
-              req = urllib.request.Request(url, headers=headers)
-              with urllib.request.urlopen(req) as response, open(dest, "wb") as out_file:
-                  out_file.write(response.read())
-              print(f"Guardado em {dest} ({os.path.getsize(dest)} bytes)")
+          print("A descarregar OpenOrbis-PS4-Toolchain...")
+          url = "https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/archive/refs/tags/v0.5.4.zip"
+          req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+          with urllib.request.urlopen(req) as resp, open("toolchain.zip", "wb") as f:
+              f.write(resp.read())
 
-          # 1. OpenOrbis SDK
-          toolchain_url = "https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/archive/refs/tags/v0.5.4.zip"
-          download_file(toolchain_url, "toolchain.zip")
-          with zipfile.ZipFile("toolchain.zip", "r") as zip_ref:
-              zip_ref.extractall(".")
-          
+          with zipfile.ZipFile("toolchain.zip", "r") as z:
+              z.extractall(".")
+
           if os.path.exists("OpenOrbis-PS4-Toolchain-0.5.4"):
               os.rename("OpenOrbis-PS4-Toolchain-0.5.4", "OpenOrbis-PS4-Toolchain")
-          
+
           os.makedirs("OpenOrbis-PS4-Toolchain/include/orbis", exist_ok=True)
           os.makedirs("OpenOrbis-PS4-Toolchain/lib", exist_ok=True)
           with open("OpenOrbis-PS4-Toolchain/include/orbis/Types.h", "w") as f:
               f.write("")
 
-          sdk_abs_path = os.path.abspath("OpenOrbis-PS4-Toolchain")
-          with open(os.environ["GITHUB_ENV"], "a") as env_file:
-              env_file.write(f"SDK_PATH={sdk_abs_path}\n")
-
-          # 2. Obter URL dinâmica da release mais recente do llvm-mingw via GitHub API
-          print("A procurar a versão mais recente do llvm-mingw via API do GitHub...")
-          api_url = "https://api.github.com/repos/mstorsjo/llvm-mingw/releases/latest"
-          req_api = urllib.request.Request(api_url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/vnd.github.v3+json"})
-          
-          llvm_url = None
-          try:
-              with urllib.request.urlopen(req_api) as response:
-                  data = json.loads(response.read().decode())
-                  for asset in data.get("assets", []):
-                      if "ucrt-x86_64.tar.xz" in asset["name"]:
-                          llvm_url = asset["browser_download_url"]
-                          break
-          except Exception as e:
-              print(f"Aviso ao consultar API: {e}")
-
-          # Fallback seguro caso a API falhe
-          if not llvm_url:
-              llvm_url = "https://github.com/mstorsjo/llvm-mingw/releases/download/20240905/llvm-mingw-20240905-ucrt-x86_64.tar.xz"
-
-          download_file(llvm_url, "llvm-mingw.tar.xz")
-          
-          with tarfile.open("llvm-mingw.tar.xz", "r:*") as tar_ref:
-              tar_ref.extractall(".")
-
-          extracted_dir = [d for d in os.listdir(".") if d.startswith("llvm-mingw-") and os.path.isdir(d)][0]
-          llvm_bin = os.path.abspath(os.path.join(extracted_dir, "bin"))
-          with open(os.environ["GITHUB_ENV"], "a") as env_file:
-              env_file.write(f"LLVM_BIN={llvm_bin}\n")
-          print("Todas as dependências foram configuradas com sucesso!")
+          sdk_abs = os.path.abspath("OpenOrbis-PS4-Toolchain")
+          with open(os.environ["GITHUB_ENV"], "a") as env:
+              env.write(f"SDK_PATH={sdk_abs}\n")
+              env.write("LLVM_BIN=/usr/bin\n")
+          print("SDK configurado com sucesso!")
           '
 
       - name: Prepare Pinned Dependencies
