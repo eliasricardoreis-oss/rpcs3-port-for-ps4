@@ -38,12 +38,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build python3 git curl wget build-essential pkg-config unzip
 
-      # Clona o repositório completo para garantir a estrutura correta exigida pelo toolchain.cmake
-      - name: Clone OpenOrbis Toolchain
+      # Clona o OpenOrbis Toolchain recursivamente para garantir que todos os submódulos internos do SDK venham juntos
+      - name: Clone OpenOrbis Toolchain with Submodules
         run: |
           mkdir -p ps4-toolchain-deps
           cd ps4-toolchain-deps
-          git clone --depth 1 https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain.git
+          git clone --recursive --depth 1 https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain.git
           echo "SDK_PATH=$PWD/OpenOrbis-PS4-Toolchain" >> $GITHUB_ENV
           cd ..
 
@@ -62,6 +62,7 @@ jobs:
           mkdir -p ps4-port/.build-abi
           
           cmake -S . -B ps4-port/.build-abi -G Ninja \
+            -DCMAKE_MAKE_PROGRAM=/usr/bin/ninja \
             -DRPCS3_PS4_PORT=ON \
             -DCMAKE_TOOLCHAIN_FILE=ps4-port/toolchain.cmake \
             -DRPCS3_PS4_SDK="${{ env.SDK_PATH }}" \
@@ -91,7 +92,6 @@ jobs:
           path: rpcs3-ps4/output/*.pkg
           retention-days: 14
 
-      # Publica o arquivo .pkg diretamente nas Releases do GitHub
       - name: Create Automatic Release on Success
         if: steps.find_pkg.outputs.pkg_exists == 'true' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
         uses: softprops/action-gh-release@v1
