@@ -38,13 +38,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build python3 git curl wget build-essential pkg-config unzip
 
-      # Script Python atualizado com tratamento de erros e fallback para links do llvm-mingw
-      - name: Setup PS4 Toolchain & llvm-mingw Dependencies (Python Downloader)
+      # Script Python inteligente com consulta à API do GitHub para buscar o llvm-mingw de forma 100% dinâmica
+      - name: Setup PS4 Toolchain & llvm-mingw Dependencies (Dynamic API Downloader)
         run: |
           mkdir -p ps4-toolchain-deps
           cd ps4-toolchain-deps
           python3 -c '
           import urllib.request
+          import json
           import zipfile
           import tarfile
           import os
@@ -53,13 +54,9 @@ jobs:
               print(f"A descarregar {url}...")
               headers = {"User-Agent": "Mozilla/5.0"}
               req = urllib.request.Request(url, headers=headers)
-              try:
-                  with urllib.request.urlopen(req) as response, open(dest, "wb") as out_file:
-                      out_file.write(response.read())
-                  print(f"Guardado em {dest} ({os.path.getsize(dest)} bytes)")
-              except Exception as e:
-                  print(f"Erro ao descarregar {url}: {e}")
-                  raise e
+              with urllib.request.urlopen(req) as response, open(dest, "wb") as out_file:
+                  out_file.write(response.read())
+              print(f"Guardado em {dest} ({os.path.getsize(dest)} bytes)")
 
           # 1. OpenOrbis SDK
           toolchain_url = "https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/archive/refs/tags/v0.5.4.zip"
@@ -79,24 +76,28 @@ jobs:
           with open(os.environ["GITHUB_ENV"], "a") as env_file:
               env_file.write(f"SDK_PATH={sdk_abs_path}\n")
 
-          # 2. llvm-mingw (Tentando a versão mais recente/estável UCRT x86_64)
-          llvm_urls = [
-              "https://github.com/mstorsjo/llvm-mingw/releases/download/20240619/llvm-mingw-20240619-ucrt-x86_64.tar.xz",
-              "https://github.com/mstorsjo/llvm-mingw/releases/latest/download/llvm-mingw-ucrt-x86_64.tar.xz"
-          ]
+          # 2. Obter URL dinâmica da release mais recente do llvm-mingw via GitHub API
+          print("A procurar a versão mais recente do llvm-mingw via API do GitHub...")
+          api_url = "https://api.github.com/repos/mstorsjo/llvm-mingw/releases/latest"
+          req_api = urllib.request.Request(api_url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/vnd.github.v3+json"})
           
-          success = False
-          for llvm_url in llvm_urls:
-              try:
-                  download_file(llvm_url, "llvm-mingw.tar.xz")
-                  success = True
-                  break
-              except Exception:
-                  print(f"Tentativa com {llvm_url} falhou, a tentar alternativa...")
-          
-          if not success:
-              raise Exception("Todas as tentativas de descarregar o llvm-mingw falharam.")
+          llvm_url = None
+          try:
+              with urllib.request.urlopen(req_api) as response:
+                  data = json.loads(response.read().decode())
+                  for asset in data.get("assets", []):
+                      if "ucrt-x86_64.tar.xz" in asset["name"]:
+                          llvm_url = asset["browser_download_url"]
+                          break
+          except Exception as e:
+              print(f"Aviso ao consultar API: {e}")
 
+          # Fallback seguro caso a API falhe
+          if not llvm_url:
+              llvm_url = "https://github.com/mstorsjo/llvm-mingw/releases/download/20240905/llvm-mingw-20240905-ucrt-x86_64.tar.xz"
+
+          download_file(llvm_url, "llvm-mingw.tar.xz")
+          
           with tarfile.open("llvm-mingw.tar.xz", "r:*") as tar_ref:
               tar_ref.extractall(".")
 
@@ -104,7 +105,7 @@ jobs:
           llvm_bin = os.path.abspath(os.path.join(extracted_dir, "bin"))
           with open(os.environ["GITHUB_ENV"], "a") as env_file:
               env_file.write(f"LLVM_BIN={llvm_bin}\n")
-          print("Dependências configuradas com sucesso!")
+          print("Todas as dependências foram configuradas com sucesso!")
           '
 
       - name: Prepare Pinned Dependencies
