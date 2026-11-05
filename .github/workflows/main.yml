@@ -21,50 +21,57 @@ jobs:
           submodules: false
           fetch-depth: 0
 
-      # Passo corrigido para registrar o pin do LLVM sem conflito de git init (Baseado no BUILDING.md)
-      - name: Record LLVM Submodule Pin
+      # Desativar verificação de submódulos problemáticos no git config para evitar erro 128 no final
+      - name: Configure Git Safe Defaults
         run: |
+          git config --global --unset-all core.sshCommand || true
           git config user.name "GitHub Actions Bot"
           git config user.email "actions@github.com"
           git update-index --add --cacheinfo "160000,ca7933e47d3a3451d81e72ac174dcb5aa28b59d1,3rdparty/llvm/llvm" || true
           git commit -m "Record RPCS3's LLVM submodule pin" || true
 
-      # Instalação de ferramentas base do host
       - name: Install Host Tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build python3 git curl wget build-essential pkg-config
+          sudo apt-get install -y cmake ninja-build python3 git curl wget build-essential pkg-config unzip
 
-      # Configuração dos diretórios de dependências conforme o BUILDING.md[cite: 10]
+      # Baixar OpenOrbis Toolchain e llvm-mingw necessários para cruzar a compilação para o PS4 (Conforme BUILDING.md)
+      - name: Download PS4 Toolchain & Dependencies
+        run: |
+          mkdir -p ps4-toolchain-deps
+          cd ps4-toolchain-deps
+          
+          # Baixar OpenOrbis PS4 Toolchain v0.5.4
+          wget -q https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/archive/refs/tags/v0.5.4.zip
+          unzip -q v0.5.4.zip
+          mv OpenOrbis-PS4-Toolchain-0.5.4 OpenOrbis-PS4-Toolchain
+          
+          echo "SDK_PATH=$PWD/OpenOrbis-PS4-Toolchain" >> $GITHUB_ENV
+          cd ..
+
       - name: Prepare Pinned Dependencies
         run: |
-          mkdir -p rpcs3-ps4/ps4-port/deps
-          mkdir -p rpcs3-ps4/ps4-port/.build-tools
-          
-          cd rpcs3-ps4
+          mkdir -p ps4-port/deps
+          mkdir -p ps4-port/.build-tools
           if [ -f "./ps4-port/prepare-abseil.sh" ]; then
             ./ps4-port/prepare-abseil.sh || true
           fi
 
-      # Execução da configuração do CMake e compilação do ELF[cite: 10]
       - name: Configure and Build Native ELF
         run: |
-          cd rpcs3-ps4
-          
           mkdir -p ps4-port/.build-abi
           
           cmake -S . -B ps4-port/.build-abi -G Ninja \
             -DRPCS3_PS4_PORT=ON \
-            -DCMAKE_BUILD_TYPE=Release || echo "Aviso na configuração do CMake"
+            -DRPCS3_PS4_SDK="${{ env.SDK_PATH }}" \
+            -DCMAKE_BUILD_TYPE=Release
 
-          cmake --build ps4-port/.build-abi --target rpcs3_ps4_elf -j $(nproc) || true
+          cmake --build ps4-port/.build-abi --target rpcs3_ps4_elf -j $(nproc)
 
-      # Localizar e gerar artefatos para upload
       - name: Locate PKG Output
         id: find_pkg
         run: |
           mkdir -p output
-          # Buscar qualquer arquivo .pkg gerado no workspace
           FOUND_PKG=$(find . -maxdepth 5 -name "*.pkg" | head -n 1)
           if [ -n "$FOUND_PKG" ]; then
             cp "$FOUND_PKG" output/rpcs3-ps4.pkg
@@ -75,10 +82,9 @@ jobs:
           fi
 
       - name: Upload PKG Artifact
+        if: steps.find_pkg.outputs.pkg_exists == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: RPCS3-PS4-PKG
-          path: |
-            output/*.pkg
-            **/output/*.pkg
+          path: output/*.pkg
           retention-days: 14
