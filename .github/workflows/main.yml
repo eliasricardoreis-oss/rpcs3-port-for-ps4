@@ -21,12 +21,13 @@ jobs:
           submodules: false
           fetch-depth: 0
 
-      # Desativar verificação de submódulos problemáticos no git config para evitar erro 128 no final
       - name: Configure Git Safe Defaults
         run: |
           git config --global --unset-all core.sshCommand || true
           git config user.name "GitHub Actions Bot"
           git config user.email "actions@github.com"
+          # Entrar na pasta do projeto se necessário para o git update-index
+          cd rpcs3-ps4 || true
           git update-index --add --cacheinfo "160000,ca7933e47d3a3451d81e72ac174dcb5aa28b59d1,3rdparty/llvm/llvm" || true
           git commit -m "Record RPCS3's LLVM submodule pin" || true
 
@@ -35,22 +36,20 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build python3 git curl wget build-essential pkg-config unzip
 
-      # Baixar OpenOrbis Toolchain e llvm-mingw necessários para cruzar a compilação para o PS4 (Conforme BUILDING.md)
       - name: Download PS4 Toolchain & Dependencies
         run: |
           mkdir -p ps4-toolchain-deps
           cd ps4-toolchain-deps
-          
-          # Baixar OpenOrbis PS4 Toolchain v0.5.4
           wget -q https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/archive/refs/tags/v0.5.4.zip
           unzip -q v0.5.4.zip
           mv OpenOrbis-PS4-Toolchain-0.5.4 OpenOrbis-PS4-Toolchain
-          
           echo "SDK_PATH=$PWD/OpenOrbis-PS4-Toolchain" >> $GITHUB_ENV
           cd ..
 
+      # Entrar na pasta correta rpcs3-ps4 onde está o CMakeLists.txt
       - name: Prepare Pinned Dependencies
         run: |
+          cd rpcs3-ps4
           mkdir -p ps4-port/deps
           mkdir -p ps4-port/.build-tools
           if [ -f "./ps4-port/prepare-abseil.sh" ]; then
@@ -59,6 +58,7 @@ jobs:
 
       - name: Configure and Build Native ELF
         run: |
+          cd rpcs3-ps4
           mkdir -p ps4-port/.build-abi
           
           cmake -S . -B ps4-port/.build-abi -G Ninja \
@@ -71,6 +71,7 @@ jobs:
       - name: Locate PKG Output
         id: find_pkg
         run: |
+          cd rpcs3-ps4
           mkdir -p output
           FOUND_PKG=$(find . -maxdepth 5 -name "*.pkg" | head -n 1)
           if [ -n "$FOUND_PKG" ]; then
@@ -86,5 +87,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: RPCS3-PS4-PKG
-          path: output/*.pkg
+          path: rpcs3-ps4/output/*.pkg
           retention-days: 14
